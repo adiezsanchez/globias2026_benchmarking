@@ -436,6 +436,42 @@ def align_label_stack(labels: LabelBundle) -> LabelBundle:
     }
 
 
+def open_image_in_napari(
+    path: str | Path = Path("raw_data") / "image" / "to_annotate.tif",
+    *,
+    show: bool = True,
+    run: bool = False,
+) -> object:
+    """Load a TIFF and display it in Napari.
+
+    Parameters
+    ----------
+    path:
+        Image path. Defaults to ``raw_data/image/to_annotate.tif``.
+    show:
+        When ``False``, create the viewer without showing the window.
+    run:
+        When ``True``, start the Napari event loop (needed for scripts).
+
+    Returns
+    -------
+    napari.Viewer
+        Viewer that contains the image layer named after ``path``.
+    """
+    import napari
+
+    image_path = Path(path)
+    if not image_path.is_file():
+        raise FileNotFoundError(f"Image not found: {image_path}")
+
+    image = load_image(image_path)
+    viewer = napari.Viewer(title=image_path.name, show=show)
+    viewer.add_image(np.asarray(image), name=image_path.name, colormap="gray")
+    if run:
+        napari.run()
+    return viewer
+
+
 def show_in_napari(
     image: NDArray[np.generic],
     image_name: str,

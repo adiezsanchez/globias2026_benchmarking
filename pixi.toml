@@ -7,6 +7,7 @@ version = "0.1.0"
 
 [tasks]
 notebook = "jupyter notebook 01_annotation_consensus.ipynb"
+annotate = "python annotate.py"
 
 [dependencies]
 python = "3.11.*"
