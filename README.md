@@ -4,8 +4,7 @@
 
 Benchmarking scripts for the GloBIAS 2026 Dortmund edition. The workflow compares manual nuclei annotations against CPU predictions from [StarDist](https://github.com/stardist/stardist) and [Cellpose](https://github.com/MouseLand/cellpose) 3, aligns label IDs by centroid matching, and reviews the result in [Napari](https://napari.org).
 
-<details>
-<summary><h2>Environment setup</h2></summary>
+<h2>Environment setup</h2>
 1. Clone this repository:
 
    ```bash
@@ -39,10 +38,7 @@ Close and reopen your terminal, then install dependencies:
 cd globias2026_benchmarking && pixi install
 ```
 
-</details>
-
-<details>
-<summary><h2>Workflow summary</h2></summary>
+<h2>Workflow summary</h2>
 
 **Recommended folder layout**
 
@@ -85,10 +81,7 @@ globias2026_benchmarking/
 
 Core helpers live in `utils.py`.
 
-</details>
-
-<details>
-<summary><h2>Pixi tasks</h2></summary>
+<h2>Pixi tasks</h2>
 
 | Task | Command | Description |
 |------|---------|-------------|
@@ -96,4 +89,4 @@ Core helpers live in `utils.py`.
 | Annotate in Napari | `pixi run annotate` | Open `raw_data/image/to_annotate.tif` in Napari |
 | Consensus notebook | `pixi run notebook` | Launch `01_annotation_consensus.ipynb` |
 
-</details>
+
