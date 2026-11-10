@@ -436,6 +436,45 @@ def align_label_stack(labels: LabelBundle) -> LabelBundle:
     }
 
 
+def label_agreement_map(labels: LabelBundle) -> NDArray[np.float64]:
+    """Build a per-object agreement map from an aligned label stack.
+
+    Planes must already share aligned ids (see :func:`align_label_stack`).
+    For each positive label id from the reference plane, every plane is
+    binarized as ``{0, 1}``, averaged across the stack, then merged with
+    ``np.maximum`` so the result stays in ``[0, 1]`` without skew from raw
+    integer label values.
+
+    Parameters
+    ----------
+    labels:
+        Aligned label bundle. Typically annotator planes only.
+
+    Returns
+    -------
+    numpy.ndarray
+        2D agreement map. Background is ``0``; full agreement is ``1``.
+    """
+    planes = np.asarray(labels["stack"])
+    names = list(labels["names"])
+    if planes.ndim != 3:
+        raise ValueError(f"Expected a label stack of shape (n, y, x), got {planes.shape}.")
+    if len(names) != planes.shape[0]:
+        raise ValueError(
+            f"Received {len(names)} filenames for a stack of {planes.shape[0]} images."
+        )
+    if planes.shape[0] == 0:
+        raise ValueError("Label stack is empty.")
+
+    reference_ids = np.unique(planes[0])
+    reference_ids = reference_ids[reference_ids > 0]
+    agreement = np.zeros(planes.shape[1:], dtype=np.float64)
+    for label_id in reference_ids:
+        object_mean = (planes == label_id).mean(axis=0)
+        np.maximum(agreement, object_mean, out=agreement)
+    return agreement
+
+
 def open_image_in_napari(
     path: str | Path = Path("raw_data") / "image" / "to_annotate.tif",
     *,
@@ -477,13 +516,15 @@ def show_in_napari(
     image_name: str,
     aligned: LabelBundle,
     *,
+    uncertainty: NDArray[np.floating] | None = None,
     show: bool = True,
 ) -> object:
     """Open the input image and the aligned label stack in Napari.
 
     Layer names are the original filenames. The aligned stack is one labels
     layer: moving its slider renames that layer to the filename of the
-    visible plane.
+    visible plane. An optional agreement map is shown with the inferno
+    colormap.
 
     Parameters
     ----------
@@ -493,13 +534,16 @@ def show_in_napari(
         Filename of ``image``.
     aligned:
         Aligned label bundle. ``names`` recovers each plane's source file.
+    uncertainty:
+        Optional 2D agreement map in ``[0, 1]`` from
+        :func:`label_agreement_map`.
     show:
         When ``False``, create the viewer without showing the window.
 
     Returns
     -------
     napari.Viewer
-        Viewer with the image and the aligned label stack.
+        Viewer with the image, optional uncertainty layer, and labels.
     """
     import napari
 
@@ -514,6 +558,19 @@ def show_in_napari(
 
     viewer = napari.Viewer(title="Annotation consensus", show=show)
     viewer.add_image(np.asarray(image), name=image_name, colormap="gray")
+    if uncertainty is not None:
+        agreement = np.asarray(uncertainty, dtype=np.float64)
+        if agreement.shape != planes.shape[1:]:
+            raise ValueError(
+                f"Uncertainty shape {agreement.shape} does not match "
+                f"label plane shape {planes.shape[1:]}."
+            )
+        viewer.add_image(
+            agreement,
+            name="uncertainty",
+            colormap="inferno",
+            opacity=0.5,
+        )
     layer = viewer.add_labels(
         planes,
         name=names[0],
