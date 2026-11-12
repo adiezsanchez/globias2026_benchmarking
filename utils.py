@@ -18,6 +18,8 @@ from scipy.optimize import linear_sum_assignment
 from scipy.spatial.distance import cdist
 from skimage.measure import regionprops
 from skimage.segmentation import relabel_sequential as _relabel_sequential
+import plotly.express as px
+import plotly.graph_objects as go
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
@@ -516,7 +518,7 @@ def show_in_napari(
     image_name: str,
     aligned: LabelBundle,
     *,
-    uncertainty: NDArray[np.floating] | None = None,
+    agreement: NDArray[np.floating] | None = None,
     show: bool = True,
 ) -> object:
     """Open the input image and the aligned label stack in Napari.
@@ -534,7 +536,7 @@ def show_in_napari(
         Filename of ``image``.
     aligned:
         Aligned label bundle. ``names`` recovers each plane's source file.
-    uncertainty:
+    agreement:
         Optional 2D agreement map in ``[0, 1]`` from
         :func:`label_agreement_map`.
     show:
@@ -543,7 +545,7 @@ def show_in_napari(
     Returns
     -------
     napari.Viewer
-        Viewer with the image, optional uncertainty layer, and labels.
+        Viewer with the image, optional agreement layer, and labels.
     """
     import napari
 
@@ -558,16 +560,16 @@ def show_in_napari(
 
     viewer = napari.Viewer(title="Annotation consensus", show=show)
     viewer.add_image(np.asarray(image), name=image_name, colormap="gray")
-    if uncertainty is not None:
-        agreement = np.asarray(uncertainty, dtype=np.float64)
+    if agreement is not None:
+        agreement = np.asarray(agreement, dtype=np.float64)
         if agreement.shape != planes.shape[1:]:
             raise ValueError(
-                f"Uncertainty shape {agreement.shape} does not match "
+                f"Agreement shape {agreement.shape} does not match "
                 f"label plane shape {planes.shape[1:]}."
             )
         viewer.add_image(
             agreement,
-            name="uncertainty",
+            name="agreement",
             colormap="inferno",
             opacity=0.5,
         )
@@ -691,3 +693,96 @@ def _rename_with_slider(viewer: object, layer: object, names: Sequence[str]) -> 
 
     viewer.dims.events.current_step.connect(_apply)
     _apply()
+
+
+def uncertainty_bars_3d(uncertainty, *, threshold=0.0, stride=1):
+    u = np.asarray(uncertainty, dtype=float)
+    ys, xs = np.nonzero(u > threshold)
+    if stride > 1:
+        keep = (xs % stride == 0) & (ys % stride == 0)
+        xs, ys = xs[keep], ys[keep]
+    zs = u[ys, xs]
+    if zs.size == 0:
+        raise ValueError("No pixels above threshold.")
+
+    # Inferno colors mapped to bar height
+    t = (zs - zs.min()) / (zs.max() - zs.min() + 1e-12)
+    colors = px.colors.sample_colorscale("viridis", t.tolist())
+
+    # One Mesh3d of unit-base cuboids from z=0 to z=height
+    vertices, faces, face_colors = [], [], []
+    for i, (x, y, z, c) in enumerate(zip(xs, ys, zs, colors)):
+        base = len(vertices)
+        vertices.extend(
+            [
+                (x, y, 0),
+                (x + 1, y, 0),
+                (x + 1, y + 1, 0),
+                (x, y + 1, 0),
+                (x, y, z),
+                (x + 1, y, z),
+                (x + 1, y + 1, z),
+                (x, y + 1, z),
+            ]
+        )
+        # 12 triangles (2 per side)
+        tris = [
+            (0, 1, 2), (0, 2, 3),  # bottom
+            (4, 5, 6), (4, 6, 7),  # top
+            (0, 1, 5), (0, 5, 4),
+            (1, 2, 6), (1, 6, 5),
+            (2, 3, 7), (2, 7, 6),
+            (3, 0, 4), (3, 4, 7),
+        ]
+        for a, b, d in tris:
+            faces.append((base + a, base + b, base + d))
+            face_colors.append(c)
+
+    v = np.asarray(vertices, dtype=float)
+    f = np.asarray(faces, dtype=int)
+
+    fig = go.Figure(
+        go.Mesh3d(
+            x=v[:, 0],
+            y=v[:, 1],
+            z=v[:, 2],
+            i=f[:, 0],
+            j=f[:, 1],
+            k=f[:, 2],
+            facecolor=face_colors,
+            flatshading=True,
+            opacity=0.3,
+            showscale=False,
+            hoverinfo="skip",
+        )
+    )
+    # Separate colorbar synced to uncertainty
+    fig.add_trace(
+        go.Scatter3d(
+            x=[None],
+            y=[None],
+            z=[None],
+            mode="markers",
+            marker=dict(
+                colorscale="viridis",
+                cmin=0,
+                cmax=100,
+                color=[0, 100],
+                colorbar=dict(title="uncertainty"),
+                showscale=True,
+                size=0,
+            ),
+            showlegend=False,
+        )
+    )
+    fig.update_layout(
+        scene=dict(
+            xaxis_title="x",
+            yaxis_title="y",
+            zaxis_title="uncertainty",
+            aspectmode="data",
+        ),
+        title="Inter-annotation uncertainty",
+        margin=dict(l=0, r=0, t=40, b=0),
+    )
+    return fig
