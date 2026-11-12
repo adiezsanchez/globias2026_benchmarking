@@ -8,6 +8,7 @@ version = "0.1.0"
 [tasks]
 notebook = "jupyter notebook 01_annotation_consensus.ipynb"
 annotate = "python annotate.py"
+consensus = "python consensus.py"
 
 [dependencies]
 python = "3.11.*"
